@@ -2,7 +2,8 @@
 nameOverride: ui
 image:
   repository: public.ecr.aws/aws-containers/retail-store-sample-ui
-  tag: "1.2.0"           # dev may use tags; stage/prod MUST use digest (Kyverno-enforced)
+  tag: ""
+  digest: "sha256:37507f4c0fa77ccff4c228b0eaa552b26e8d6ff91254ea485fe84a0048984e83"
   pullPolicy: IfNotPresent
 replicaCount: 2
 containerPort: 8080
