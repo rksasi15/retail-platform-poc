@@ -24,6 +24,9 @@ spec:
         ports:
         - containerPort: {{ .Values.containerPort }}
         securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
         {{- if or .Values.env .Values.config .Values.externalSecret.enabled }}
         envFrom:
         {{- if .Values.config }}
@@ -49,7 +52,10 @@ spec:
           initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
           periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
-      {{- with .Values.nodeSelector }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+            {{- with .Values.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.tolerations }}
