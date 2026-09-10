@@ -8,9 +8,15 @@ spec:
   sourceRepos: ["https://github.com/rksasi15/retail-platform-poc.git"]
   destinations:
   - server: https://kubernetes.default.svc
-    namespace: "retail-dev"
+    namespace: argocd
   - server: https://kubernetes.default.svc
-    namespace: "monitoring"
+    namespace: retail-dev
+  - server: https://kubernetes.default.svc
+    namespace: monitoring
+  - server: https://kubernetes.default.svc
+    namespace: kube-system
+  - server: https://kubernetes.default.svc
+    namespace: kyverno
   clusterResourceWhitelist:
   - { group: "*", kind: "*" }
   namespaceResourceWhitelist:
