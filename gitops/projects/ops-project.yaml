@@ -5,12 +5,13 @@ metadata:
   namespace: argocd
 spec:
   description: Stage/Prod — team-ops only, manual sync
-  sourceRepos: ["https://github.com/rksasi15/retail-platform-poc.git"]
+  sourceRepos:
+  - https://github.com/rksasi15/retail-platform-poc.git
   destinations:
   - server: https://kubernetes.default.svc
-    namespace: "retail-stage"
+    namespace: retail-stage
   - server: https://kubernetes.default.svc
-    namespace: "retail-prod"
+    namespace: retail-prod
   clusterResourceWhitelist:
   - { group: "*", kind: "*" }
   namespaceResourceWhitelist:

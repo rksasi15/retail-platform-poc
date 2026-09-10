@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ui-stage
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: ops
+  source:
+    repoURL: "https://github.com/rksasi15/retail-platform-poc.git"
+    targetRevision: main
+    path: apps/retail-service
+    helm:
+      valueFiles: [values-ui-stage.yaml]
+  destination: { server: https://kubernetes.default.svc, namespace: retail-stage }
+  syncPolicy:
+    syncOptions: [CreateNamespace=true]
