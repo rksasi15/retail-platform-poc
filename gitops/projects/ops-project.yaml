@@ -5,7 +5,7 @@ metadata:
   namespace: argocd
 spec:
   description: Stage/Prod — team-ops only, manual sync
-  sourceRepos: ["https://github.com/CHANGE-ME/retail-platform-poc.git"]
+  sourceRepos: ["https://github.com/rksasi15/retail-platform-poc.git"]
   destinations:
   - server: https://kubernetes.default.svc
     namespace: "retail-stage"

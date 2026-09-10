@@ -9,7 +9,7 @@ metadata:
 spec:
   project: dev
   source:
-    repoURL: "https://github.com/CHANGE-ME/retail-platform-poc.git"
+    repoURL: "https://github.com/rksasi15/retail-platform-poc.git"
     targetRevision: main
     path: gitops/apps/dev
   destination:

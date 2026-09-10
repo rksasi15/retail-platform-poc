@@ -10,7 +10,7 @@ repo URL everywhere:
 ```bash
 # from the repo root
 GH="https://github.com/<your-user>/retail-platform-poc.git"
-grep -rl "CHANGE-ME/retail-platform-poc" gitops | xargs sed -i '' "s#https://github.com/CHANGE-ME/retail-platform-poc.git#$GH#g"   # macOS sed
+grep -rl "CHANGE-ME/retail-platform-poc" gitops | xargs sed -i '' "s#https://github.com/rksasi15/retail-platform-poc.git#$GH#g"   # macOS sed
 git add -A && git commit -m "wire gitops repo url" && git push
 ```
 
