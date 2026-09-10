@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack-dev
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "-1" }
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: dev
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 62.7.0          # pin; bump deliberately
+    helm:
+      valuesObject:
+        grafana:
+          adminPassword: "poc-admin"   # PoC only; use a Secret/ESO in real envs
+          service: { type: ClusterIP }
+        prometheus:
+          prometheusSpec:
+            retention: 3d
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+        alertmanager:
+          alertmanagerSpec: { retention: 24h }
+  destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

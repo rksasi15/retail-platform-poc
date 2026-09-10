@@ -1,0 +1,84 @@
+---
+# cluster-create.yml — render the kOps manifest from Terraform outputs, then
+# kops create/update/validate. Run `make output` in infra-live/dev FIRST so that
+# {{ tf_outputs_file }} exists.
+- name: Create HA kOps cluster
+  hosts: control
+  gather_facts: true
+  vars:
+    manifest_path: "/tmp/{{ cluster_name }}.kops.yaml"
+  tasks:
+    - name: Load Terraform outputs
+      set_fact:
+        tf: "{{ (lookup('file', tf_outputs_file) | from_json) }}"
+
+    - name: Extract values from TF outputs
+      set_fact:
+        vpc_id:                "{{ tf.vpc_id.value }}"
+        vpc_cidr:              "{{ tf.vpc_cidr.value }}"
+        kms_key_arn:           "{{ tf.kms_key_arn.value }}"
+        kops_state_store:      "{{ tf.kops_state_store.value }}"
+        oidc_discovery_store:  "{{ tf.oidc_discovery_store.value }}"
+        private_subnets_by_az: "{{ tf.private_subnets_by_az.value }}"
+        public_subnets_by_az:  "{{ tf.public_subnets_by_az.value }}"
+        azs:                   "{{ tf.private_subnets_by_az.value.keys() | list | sort }}"
+
+    - name: Look up NAT gateway IDs (for subnet egress)
+      shell: >
+        aws ec2 describe-nat-gateways --region {{ aws_region }}
+        --filter "Name=vpc-id,Values={{ vpc_id }}" "Name=state,Values=available"
+        --query "NatGateways[].NatGatewayId" --output text
+      register: nat_out
+      changed_when: false
+    - set_fact:
+        nat_gateway_ids: "{{ nat_out.stdout.split() }}"
+
+    - name: Render kOps cluster + instancegroup manifest
+      template:
+        src: ../templates/kops-cluster.yaml.j2
+        dest: "{{ manifest_path }}"
+        mode: "0644"
+
+    - name: Apply manifest to kOps state store (create or replace)
+      shell: |
+        set -e
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        if kops get cluster {{ cluster_name }} >/dev/null 2>&1; then
+          kops replace -f {{ manifest_path }}
+        else
+          kops create -f {{ manifest_path }}
+        fi
+      register: kops_apply
+      changed_when: "'Created' in kops_apply.stdout or 'Replaced' in kops_apply.stdout"
+
+    - name: Create/rotate the cluster SSH public key
+      shell: |
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        kops create secret --name {{ cluster_name }} sshpublickey admin \
+          -i {{ ansible_env.HOME }}/.ssh/id_rsa.pub 2>/dev/null || true
+      changed_when: false
+
+    - name: kops update cluster (provision AWS resources + OIDC provider)
+      shell: |
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        kops update cluster {{ cluster_name }} --yes --admin
+      register: kops_update
+
+    - name: Wait for cluster to validate (up to 20 min)
+      shell: |
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        kops validate cluster {{ cluster_name }} --wait 20m
+      register: kops_validate
+      retries: 2
+      delay: 30
+      until: kops_validate.rc == 0
+
+    - name: Show validation result
+      debug: { var: kops_validate.stdout_lines }
+
+    - name: NEXT STEP reminder
+      debug:
+        msg: >
+          Cluster up. Now run Phase-2 IRSA in Terraform:
+          `cd ../../infra-live/dev && make apply-irsa && make output`
+          then `ansible-playbook playbooks/addons-bootstrap.yml`.

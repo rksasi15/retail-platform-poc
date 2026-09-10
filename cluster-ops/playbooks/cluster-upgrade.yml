@@ -1,0 +1,38 @@
+---
+# cluster-upgrade.yml — safe rolling upgrade of k8s version / instancegroups.
+# Bump k8s_version in group_vars/dev.yml first, then run this.
+- name: Rolling upgrade of kOps cluster
+  hosts: control
+  gather_facts: false
+  vars:
+    manifest_path: "/tmp/{{ cluster_name }}.kops.yaml"
+  tasks:
+    - name: Load Terraform outputs
+      set_fact:
+        tf: "{{ (lookup('file', tf_outputs_file) | from_json) }}"
+    - set_fact:
+        kops_state_store: "{{ tf.kops_state_store.value }}"
+
+    - name: Re-render manifest with new k8s_version and replace in state store
+      include_tasks: _render_and_replace.yml
+
+    - name: Preview the upgrade plan (dry run)
+      shell: |
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        kops update cluster {{ cluster_name }}
+      register: plan
+      changed_when: false
+    - debug: { var: plan.stdout_lines }
+
+    - name: Apply config changes
+      shell: |
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        kops update cluster {{ cluster_name }} --yes --admin
+
+    - name: Rolling update (surge, drain, validate each node — cordoned one IG at a time)
+      shell: |
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        kops rolling-update cluster {{ cluster_name }} --yes \
+          --validate-count 3 --node-interval 90s --master-interval 120s
+      register: roll
+    - debug: { var: roll.stdout_lines }

@@ -1,0 +1,64 @@
+---
+# install-tools.yml — install kops, kubectl, helm, argocd CLIs on the control host.
+# Idempotent: skips download if the pinned version is already present.
+- name: Install platform CLIs
+  hosts: control
+  gather_facts: true
+  vars:
+    bin_dir: "{{ ansible_env.HOME }}/.local/bin"
+  tasks:
+    - name: Ensure local bin dir exists
+      file:
+        path: "{{ bin_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Install kubectl {{ k8s_version }}
+      get_url:
+        url: "https://dl.k8s.io/release/v{{ k8s_version }}/bin/linux/amd64/kubectl"
+        dest: "{{ bin_dir }}/kubectl"
+        mode: "0755"
+
+    - name: Install kops {{ kops_version }}
+      get_url:
+        url: "https://github.com/kubernetes/kops/releases/download/v{{ kops_version }}/kops-linux-amd64"
+        dest: "{{ bin_dir }}/kops"
+        mode: "0755"
+
+    - name: Download helm {{ helm_version }} tarball
+      get_url:
+        url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+        dest: "/tmp/helm.tgz"
+        mode: "0644"
+    - name: Unpack helm
+      unarchive:
+        src: /tmp/helm.tgz
+        dest: /tmp
+        remote_src: true
+    - name: Install helm binary
+      copy:
+        src: /tmp/linux-amd64/helm
+        dest: "{{ bin_dir }}/helm"
+        mode: "0755"
+        remote_src: true
+
+    - name: Install argocd CLI {{ argocd_cli_version }}
+      get_url:
+        url: "https://github.com/argoproj/argo-cd/releases/download/{{ argocd_cli_version }}/argocd-linux-amd64"
+        dest: "{{ bin_dir }}/argocd"
+        mode: "0755"
+
+    - name: Verify versions
+      shell: |
+        export PATH="{{ bin_dir }}:$PATH"
+        echo "kubectl: $(kubectl version --client -o yaml | grep gitVersion | head -1)"
+        echo "kops:    $(kops version)"
+        echo "helm:    $(helm version --short)"
+        echo "argocd:  $(argocd version --client --short 2>/dev/null || true)"
+      register: versions
+      changed_when: false
+    - debug: { var: versions.stdout_lines }
+
+    - name: Reminder about PATH
+      debug:
+        msg: "Add {{ bin_dir }} to your PATH:  export PATH=\"{{ bin_dir }}:$PATH\""

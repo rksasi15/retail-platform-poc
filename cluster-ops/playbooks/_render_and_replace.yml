@@ -1,0 +1,24 @@
+---
+# shared task file: render kops manifest from TF outputs and replace in state store
+- set_fact:
+    vpc_id:                "{{ tf.vpc_id.value }}"
+    vpc_cidr:              "{{ tf.vpc_cidr.value }}"
+    kms_key_arn:           "{{ tf.kms_key_arn.value }}"
+    kops_state_store:      "{{ tf.kops_state_store.value }}"
+    oidc_discovery_store:  "{{ tf.oidc_discovery_store.value }}"
+    private_subnets_by_az: "{{ tf.private_subnets_by_az.value }}"
+    public_subnets_by_az:  "{{ tf.public_subnets_by_az.value }}"
+    azs:                   "{{ tf.private_subnets_by_az.value.keys() | list | sort }}"
+- shell: >
+    aws ec2 describe-nat-gateways --region {{ aws_region }}
+    --filter "Name=vpc-id,Values={{ vpc_id }}" "Name=state,Values=available"
+    --query "NatGateways[].NatGatewayId" --output text
+  register: nat_out
+  changed_when: false
+- set_fact: { nat_gateway_ids: "{{ nat_out.stdout.split() }}" }
+- template:
+    src: ../templates/kops-cluster.yaml.j2
+    dest: "{{ manifest_path }}"
+- shell: |
+    export KOPS_STATE_STORE="{{ kops_state_store }}"
+    kops replace -f {{ manifest_path }} --force

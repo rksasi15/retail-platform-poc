@@ -1,0 +1,71 @@
+# Defaults; overridden per service by values-<svc>-<env>.yaml.
+nameOverride: ""
+image:
+  repository: public.ecr.aws/aws-containers/retail-store-sample-ui
+  # ALWAYS pin by digest in stage/prod (Kyverno enforces no :latest). Tag ok in dev.
+  tag: "1.2.0"
+  digest: ""          # e.g. sha256:... — if set, takes precedence over tag
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+containerPort: 8080
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}     # e.g. eks.amazonaws.com/role-arn for IRSA
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ""            # e.g. dev.retail.example.com
+  path: /
+  pathType: Prefix
+  clusterIssuer: letsencrypt-staging
+  tls: true
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits:   { cpu: 500m, memory: 256Mi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+probes:
+  liveness:  { path: /health, port: 8080, initialDelaySeconds: 15, periodSeconds: 10 }
+  readiness: { path: /health, port: 8080, initialDelaySeconds: 5,  periodSeconds: 10 }
+
+env: {}               # plain env: { KEY: value }
+config: {}            # -> ConfigMap
+externalSecret:
+  enabled: false
+  storeRef: aws-parameterstore
+  data: []            # [{ secretKey: DB_PASSWORD, remoteRef: /retail-poc-dev/orders/db_password }]
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: ["ALL"] }
+
+nodeSelector: {}
+tolerations:
+  - key: spot
+    operator: Equal
+    value: "true"
+    effect: PreferNoSchedule

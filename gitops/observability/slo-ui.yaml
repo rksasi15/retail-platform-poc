@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: retail-ui-slo
+  namespace: monitoring
+  labels: { release: kube-prometheus-stack-dev }   # picked up by the stack's ruleSelector
+spec:
+  groups:
+  - name: retail-ui.slo
+    rules:
+    # success ratio over 30m using nginx ingress metrics (non-5xx / total)
+    - record: job:ui_request_success_ratio:ratio30m
+      expr: |
+        sum(rate(nginx_ingress_controller_requests{service="ui",status!~"5.."}[30m]))
+        /
+        sum(rate(nginx_ingress_controller_requests{service="ui"}[30m]))
+    - alert: UIErrorBudgetBurn
+      expr: job:ui_request_success_ratio:ratio30m < 0.995
+      for: 5m
+      labels: { severity: warning, slo: "ui-availability-99_5" }
+      annotations:
+        summary: "UI success ratio below 99.5% SLO"
+        description: "30m success ratio is {{ $value | humanizePercentage }} (< 99.5%)."

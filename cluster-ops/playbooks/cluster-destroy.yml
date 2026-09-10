@@ -1,0 +1,28 @@
+---
+# cluster-destroy.yml — tear down the kOps cluster. Run BEFORE `terraform destroy`.
+- name: Destroy kOps cluster
+  hosts: control
+  gather_facts: false
+  vars_prompt:
+    - name: confirm
+      prompt: "Type the cluster name to confirm destruction"
+      private: false
+  tasks:
+    - name: Guard
+      fail: { msg: "Confirmation did not match." }
+      when: confirm != cluster_name
+
+    - name: Load kops_state_store from TF outputs
+      set_fact:
+        kops_state_store: "{{ (lookup('file', tf_outputs_file) | from_json).kops_state_store.value }}"
+
+    - name: kops delete cluster --yes
+      shell: |
+        export KOPS_STATE_STORE="{{ kops_state_store }}"
+        kops delete cluster {{ cluster_name }} --yes
+      register: del
+    - debug: { var: del.stdout_lines }
+
+    - name: Reminder
+      debug:
+        msg: "kOps resources gone. Now: cd ../../infra-live/dev && make destroy && make destroy-bootstrap"

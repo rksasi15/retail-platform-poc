@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-dev
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "0" }
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: dev
+  source:
+    repoURL: "https://github.com/CHANGE-ME/retail-platform-poc.git"
+    targetRevision: main
+    path: apps/platform
+    helm:
+      valueFiles: [values.yaml]
+  destination: { server: https://kubernetes.default.svc, namespace: retail-dev }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

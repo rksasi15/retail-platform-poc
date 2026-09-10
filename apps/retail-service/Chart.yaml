@@ -1,0 +1,6 @@
+apiVersion: v2
+name: retail-service
+description: Generic chart for a retail-store-sample-app microservice (ui/catalog/cart/orders/checkout)
+type: application
+version: 0.1.0
+appVersion: "1.2.0"

@@ -1,0 +1,141 @@
+---
+# addons-bootstrap.yml — install cluster add-ons via Helm, each annotated with its
+# IRSA role ARN (from Terraform Phase-2 outputs). Cluster Autoscaler + Metrics Server
+# are already enabled in the kOps spec, so they are NOT reinstalled here.
+#
+# PRECONDITION: `make apply-irsa && make output` has run so IRSA ARNs are populated.
+- name: Bootstrap platform add-ons
+  hosts: control
+  gather_facts: true
+  environment:
+    KUBECONFIG: "{{ ansible_env.HOME }}/.kube/config"
+  vars:
+    tf: "{{ (lookup('file', tf_outputs_file) | from_json) }}"
+  tasks:
+    - name: Add helm repos
+      shell: |
+        helm repo add eks https://aws.github.io/eks-charts
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo add external-dns https://kubernetes-sigs.github.io/external-dns
+        helm repo add jetstack https://charts.jetstack.io
+        helm repo add external-secrets https://charts.external-secrets.io
+        helm repo update
+      changed_when: false
+
+    # ---------------- AWS Load Balancer Controller ----------------
+    - name: Install aws-load-balancer-controller
+      shell: |
+        helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+          -n kube-system \
+          --set clusterName={{ cluster_name }} \
+          --set region={{ aws_region }} \
+          --set vpcId={{ tf.vpc_id.value }} \
+          --set serviceAccount.create=true \
+          --set serviceAccount.name=aws-load-balancer-controller \
+          --wait
+
+    # ---------------- NGINX Ingress Controller ----------------
+    - name: Install ingress-nginx (internet-facing NLB)
+      shell: |
+        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+          -n ingress-nginx --create-namespace \
+          --set controller.service.type=LoadBalancer \
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=external \
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type"=ip \
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
+          --set controller.metrics.enabled=true \
+          --wait
+
+    # ---------------- external-dns (PRIVATE zone — no public domain needed) ----------------
+    - name: Install external-dns (manages the private Route53 zone)
+      shell: |
+        helm upgrade --install external-dns external-dns/external-dns \
+          -n kube-system \
+          --set provider=aws \
+          --set aws.region={{ aws_region }} \
+          --set aws.zoneType=private \
+          --set policy=sync \
+          --set txtOwnerId={{ cluster_name }} \
+          --set domainFilters[0]={{ tf.private_zone_name.value | regex_replace('\\.$','') }} \
+          --set serviceAccount.name=external-dns \
+          --wait
+
+    # ---------------- cert-manager ----------------
+    - name: Install cert-manager
+      shell: |
+        helm upgrade --install cert-manager jetstack/cert-manager \
+          -n cert-manager --create-namespace \
+          --set crds.enabled=true \
+          --set serviceAccount.name=cert-manager \
+          --set securityContext.fsGroup=1001 \
+          --wait
+
+    - name: Render cert-manager issuer(s)
+      copy:
+        dest: /tmp/clusterissuer.yaml
+        content: |
+          {% if tls_mode == 'selfsigned' %}
+          # No public domain -> self-signed root CA + CA ClusterIssuer.
+          # Demonstrates cert-manager + TLS wiring; certs are untrusted (browser warning), fine for PoC.
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: selfsigned-root
+          spec:
+            selfSigned: {}
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: retail-ca
+            namespace: cert-manager
+          spec:
+            isCA: true
+            commonName: retail-poc-ca
+            secretName: retail-ca-secret
+            privateKey: { algorithm: ECDSA, size: 256 }
+            issuerRef: { name: selfsigned-root, kind: ClusterIssuer, group: cert-manager.io }
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: {{ ingress_cluster_issuer }}
+          spec:
+            ca:
+              secretName: retail-ca-secret
+          {% else %}
+          # Public-domain path: Let's Encrypt ACME via Route53 DNS-01.
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: {{ ingress_cluster_issuer }}
+          spec:
+            acme:
+              email: {{ acme_email }}
+              server: {{ 'https://acme-staging-v02.api.letsencrypt.org/directory' if acme_environment == 'staging' else 'https://acme-v02.api.letsencrypt.org/directory' }}
+              privateKeySecretRef: { name: {{ ingress_cluster_issuer }}-key }
+              solvers:
+              - dns01:
+                  route53:
+                    region: {{ aws_region }}
+                    hostedZoneID: {{ tf.public_zone_id.value }}
+          {% endif %}
+    - name: Apply issuer(s)
+      shell: kubectl apply -f /tmp/clusterissuer.yaml
+
+    # ---------------- External Secrets Operator ----------------
+    - name: Install external-secrets
+      shell: |
+        helm upgrade --install external-secrets external-secrets/external-secrets \
+          -n external-secrets --create-namespace \
+          --set installCRDs=true \
+          --set serviceAccount.name=external-secrets \
+          --wait
+
+    - name: Summary
+      debug:
+        msg:
+          - "Add-ons installed. Verify:"
+          - "  kubectl get pods -A | egrep 'ingress|cert-manager|external-dns|external-secrets|load-balancer'"
+          - "  kubectl get clusterissuer"
+          - "Next: install ArgoCD -> see gitops/README.md"

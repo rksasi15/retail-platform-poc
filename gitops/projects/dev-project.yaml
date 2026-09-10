@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dev
+  namespace: argocd
+spec:
+  description: Dev environment — team-dev may sync
+  sourceRepos: ["https://github.com/CHANGE-ME/retail-platform-poc.git"]
+  destinations:
+  - server: https://kubernetes.default.svc
+    namespace: "retail-dev"
+  - server: https://kubernetes.default.svc
+    namespace: "monitoring"
+  clusterResourceWhitelist:
+  - { group: "*", kind: "*" }
+  namespaceResourceWhitelist:
+  - { group: "*", kind: "*" }

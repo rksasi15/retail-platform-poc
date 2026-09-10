@@ -1,0 +1,33 @@
+## Helm values for argo-cd chart (argoproj/argo-cd). Install into namespace 'argocd'.
+global:
+  domain: argocd.dev.retail.internal
+configs:
+  params:
+    server.insecure: true          # PoC: terminate TLS at nginx/NLB or use port-forward
+  cm:
+    # RBAC groups map to AppProjects below
+    accounts.team-dev: login
+    accounts.team-ops: login
+    timeout.reconciliation: 60s
+  rbac:
+    policy.default: role:readonly
+    policy.csv: |
+      # team-dev: full control of apps in the 'dev' project only
+      p, role:dev, applications, *, dev/*, allow
+      p, role:dev, applications, sync, dev/*, allow
+      g, team-dev, role:dev
+      # team-ops: control stage+prod projects
+      p, role:ops, applications, *, ops/*, allow
+      p, role:ops, applications, sync, ops/*, allow
+      g, team-ops, role:ops
+server:
+  metrics: { enabled: true }
+controller:
+  metrics: { enabled: true }
+repoServer:
+  metrics: { enabled: true }
+  serviceAccount:
+    # annotate with IRSA arg if pulling from ECR (tf.irsa_argocd_repo_role_arn)
+    name: argocd-repo-server
+notifications:
+  enabled: true

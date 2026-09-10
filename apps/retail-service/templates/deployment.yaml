@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "svc.name" . }}
+  labels: {{- include "svc.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "svc.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels: {{- include "svc.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "svc.sa" . }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ include "svc.name" . }}
+        image: {{ include "svc.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.containerPort }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- if or .Values.env .Values.config .Values.externalSecret.enabled }}
+        envFrom:
+        {{- if .Values.config }}
+        - configMapRef: { name: {{ include "svc.name" . }}-config }
+        {{- end }}
+        {{- if .Values.externalSecret.enabled }}
+        - secretRef: { name: {{ include "svc.name" . }}-secret }
+        {{- end }}
+        {{- end }}
+        {{- with .Values.env }}
+        env:
+        {{- range $k, $v := . }}
+        - name: {{ $k }}
+          value: {{ $v | quote }}
+        {{- end }}
+        {{- end }}
+        livenessProbe:
+          httpGet: { path: {{ .Values.probes.liveness.path }}, port: {{ .Values.probes.liveness.port }} }
+          initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+        readinessProbe:
+          httpGet: { path: {{ .Values.probes.readiness.path }}, port: {{ .Values.probes.readiness.port }} }
+          initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+        resources: {{- toYaml .Values.resources | nindent 10 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}

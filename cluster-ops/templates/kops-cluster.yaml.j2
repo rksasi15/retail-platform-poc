@@ -1,0 +1,206 @@
+##############################################################################
+# Rendered by cluster-ops/playbooks/cluster-create.yml from Terraform outputs.
+# HA: 3 masters (multi-AZ) + workers (spot + on-demand) + bastion, private topology.
+##############################################################################
+apiVersion: kops.k8s.io/v1alpha2
+kind: Cluster
+metadata:
+  name: {{ cluster_name }}
+spec:
+  channel: stable
+  cloudProvider: aws
+  configBase: {{ kops_state_store }}/{{ cluster_name }}
+  kubernetesVersion: "{{ k8s_version }}"
+
+  kubernetesApiAccess:
+    - 27.5.147.72/32
+  sshAccess:
+    - 27.5.147.72/32
+
+  api:
+    loadBalancer:
+      type: Public
+      class: Network
+
+  # ---- Shared VPC created by Terraform ----
+  networkID: {{ vpc_id }}
+  networkCIDR: {{ vpc_cidr }}
+  topology:
+    dns:
+      type: Private                             # records go in the private Route53 zone
+  subnets:
+{% for az in azs %}
+  - name: private-{{ az }}
+    id: {{ private_subnets_by_az[az] }}
+    type: Private
+    zone: {{ az }}
+    egress: {{ nat_gateway_ids[loop.index0 % nat_gateway_ids|length] }}
+{% endfor %}
+{% for az in azs %}
+  - name: utility-{{ az }}
+    id: {{ public_subnets_by_az[az] }}
+    type: Utility
+    zone: {{ az }}
+{% endfor %}
+
+  # ---- IRSA / OIDC (Terraform iam_irsa phase depends on this) ----
+  iam:
+    allowContainerRegistry: true
+    useServiceAccountExternalPermissions: true
+    serviceAccountIssuerDiscovery:
+      discoveryStore: {{ oidc_discovery_store }}
+      enableAWSOIDCProvider: true               # kOps creates the IAM OIDC provider
+
+  # ---- Secrets + etcd encryption at rest via KMS CMK ----
+  encryptionConfig: true
+  etcdClusters:
+  - name: main
+    cpuRequest: 200m
+    memoryRequest: 100Mi
+    manager:
+      backupRetentionDays: 7
+    etcdMembers:
+{% for az in azs %}
+    - name: {{ az[-1] }}
+      instanceGroup: master-{{ az }}
+      encryptedVolume: true
+      kmsKeyId: {{ kms_key_arn }}
+{% endfor %}
+  - name: events
+    cpuRequest: 100m
+    memoryRequest: 100Mi
+    etcdMembers:
+{% for az in azs %}
+    - name: {{ az[-1] }}
+      instanceGroup: master-{{ az }}
+      encryptedVolume: true
+      kmsKeyId: {{ kms_key_arn }}
+{% endfor %}
+
+  # ---- Networking: Calico + NetworkPolicy ----
+  networking:
+    calico:
+      encapsulationMode: ipip
+  nonMasqueradeCIDR: 100.64.0.0/10
+
+  # ---- API / hardening ----
+  kubeAPIServer:
+    auditLogPath: /var/log/kube-apiserver-audit.log
+    auditLogMaxAge: 7
+  kubelet:
+    anonymousAuth: false
+  authorization:
+    rbac: {}
+  cloudLabels:
+    Project: retail-store-poc
+    Environment: dev
+
+  # Cluster Autoscaler add-on (kOps-managed)
+  clusterAutoscaler:
+    enabled: true
+    expander: least-waste
+    balanceSimilarNodeGroups: true
+    awsUseStaticInstanceList: false
+
+  # Metrics Server add-on (kOps-managed)
+  metricsServer:
+    enabled: true
+    insecure: true
+  certManager:
+    enabled: false   # we install cert-manager ourselves with IRSA via Ansible/Helm
+
+---
+# ---------------- Masters: one IG per AZ (HA control plane) ----------------
+{% for az in azs %}
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: master-{{ az }}
+  labels:
+    kops.k8s.io/cluster: {{ cluster_name }}
+spec:
+  role: Master
+  machineType: {{ master_instance_type }}
+  minSize: 1
+  maxSize: 1
+{% if node_image %}  image: {{ node_image }}
+{% endif %}  subnets:
+  - private-{{ az }}
+  nodeLabels:
+    kops.k8s.io/instancegroup: master-{{ az }}
+---
+{% endfor %}
+# ---------------- Workers: on-demand baseline ----------------
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: nodes-ondemand
+  labels:
+    kops.k8s.io/cluster: {{ cluster_name }}
+spec:
+  role: Node
+  machineType: {{ node_instance_type }}
+  minSize: {{ nodes_ondemand_min }}
+  maxSize: {{ nodes_ondemand_max }}
+{% if node_image %}  image: {{ node_image }}
+{% endif %}  subnets:
+{% for az in azs %}
+  - private-{{ az }}
+{% endfor %}
+  nodeLabels:
+    kops.k8s.io/instancegroup: nodes-ondemand
+    node-lifecycle: on-demand
+  cloudLabels:
+    k8s.io/cluster-autoscaler/enabled: "true"
+    k8s.io/cluster-autoscaler/{{ cluster_name }}: "owned"
+---
+# ---------------- Workers: spot (mixed instances) ----------------
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: nodes-spot
+  labels:
+    kops.k8s.io/cluster: {{ cluster_name }}
+spec:
+  role: Node
+  machineType: {{ node_instance_type }}
+  minSize: {{ nodes_spot_min }}
+  maxSize: {{ nodes_spot_max }}
+{% if node_image %}  image: {{ node_image }}
+{% endif %}  mixedInstancesPolicy:
+    instances:
+    - {{ node_instance_type }}
+    - {{ node_instance_type_alt }}
+    onDemandBase: 0
+    onDemandAboveBase: 0
+    spotAllocationStrategy: capacity-optimized
+  subnets:
+{% for az in azs %}
+  - private-{{ az }}
+{% endfor %}
+  nodeLabels:
+    kops.k8s.io/instancegroup: nodes-spot
+    node-lifecycle: spot
+  taints:
+  - spot=true:PreferNoSchedule
+  cloudLabels:
+    k8s.io/cluster-autoscaler/enabled: "true"
+    k8s.io/cluster-autoscaler/{{ cluster_name }}: "owned"
+---
+# ---------------- Bastion ----------------
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: bastion
+  labels:
+    kops.k8s.io/cluster: {{ cluster_name }}
+spec:
+  role: Bastion
+  machineType: t3.micro
+  minSize: 1
+  maxSize: 1
+{% if node_image %}  image: {{ node_image }}
+{% endif %}  subnets:
+{% for az in azs %}
+  - utility-{{ az }}
+{% endfor %}

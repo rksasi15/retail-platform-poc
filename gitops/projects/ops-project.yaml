@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ops
+  namespace: argocd
+spec:
+  description: Stage/Prod — team-ops only, manual sync
+  sourceRepos: ["https://github.com/CHANGE-ME/retail-platform-poc.git"]
+  destinations:
+  - server: https://kubernetes.default.svc
+    namespace: "retail-stage"
+  - server: https://kubernetes.default.svc
+    namespace: "retail-prod"
+  clusterResourceWhitelist:
+  - { group: "*", kind: "*" }
+  namespaceResourceWhitelist:
+  - { group: "*", kind: "*" }

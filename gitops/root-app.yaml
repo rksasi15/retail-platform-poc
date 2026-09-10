@@ -1,0 +1,20 @@
+# Apply once: kubectl apply -f gitops/root-app.yaml
+# It manages every child Application under gitops/apps/dev (App-of-Apps pattern).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-dev
+  namespace: argocd
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: dev
+  source:
+    repoURL: "https://github.com/CHANGE-ME/retail-platform-poc.git"
+    targetRevision: main
+    path: gitops/apps/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }   # dev = auto-sync
+    syncOptions: [CreateNamespace=true]

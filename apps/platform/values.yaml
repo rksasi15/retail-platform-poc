@@ -1,0 +1,15 @@
+env: dev
+namespaces:
+  - retail-dev
+externalSecrets:
+  clusterSecretStore:
+    enabled: true
+    name: aws-parameterstore
+    region: ap-south-1
+    service: ParameterStore     # or SecretsManager
+    saName: external-secrets
+    saNamespace: external-secrets
+rbac:
+  # namespace-scoped default: devs get edit in retail-dev
+  devGroup: "team-dev"
+  opsGroup: "team-ops"

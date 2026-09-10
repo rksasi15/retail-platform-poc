@@ -1,0 +1,34 @@
+# ArgoCD notifications -> Slack. Apply into the argocd namespace.
+# Requires a Slack bot token in secret 'argocd-notifications-secret' (see below).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  service.slack: |
+    token: $slack-token
+  trigger.on-sync-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded']
+      send: [app-sync-succeeded]
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]
+  trigger.on-sync-required: |
+    - when: app.status.sync.status == 'OutOfSync' and app.spec.syncPolicy.automated == nil
+      send: [app-sync-required]
+  template.app-sync-succeeded: |
+    message: ":white_check_mark: *{{.app.metadata.name}}* synced to `{{.app.status.sync.revision}}`."
+  template.app-sync-failed: |
+    message: ":x: *{{.app.metadata.name}}* sync FAILED. Check ArgoCD."
+  template.app-health-degraded: |
+    message: ":warning: *{{.app.metadata.name}}* is Degraded."
+  template.app-sync-required: |
+    message: ":hourglass: *{{.app.metadata.name}}* is OutOfSync and needs MANUAL sync (stage/prod)."
+  # Subscribe apps to the Slack channel by default:
+  subscriptions: |
+    - recipients: [slack:retail-deploys]
+      triggers: [on-sync-succeeded, on-sync-failed, on-health-degraded, on-sync-required]

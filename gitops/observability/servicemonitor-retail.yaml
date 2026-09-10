@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: retail-services
+  namespace: monitoring
+  labels: { release: kube-prometheus-stack-dev }
+spec:
+  namespaceSelector: { matchNames: [retail-dev] }
+  selector:
+    matchLabels: { app.kubernetes.io/managed-by: Helm }
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s

@@ -1,0 +1,7 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "PlaceholderReplacedAtBootstrap", "Effect": "Allow",
+      "Action": ["elasticloadbalancing:DescribeLoadBalancers"], "Resource": "*" }
+  ]
+}

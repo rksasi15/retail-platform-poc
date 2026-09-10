@@ -1,0 +1,41 @@
+# ---- Environment knobs for the dev cluster ----
+env: dev
+aws_region: ap-south-1
+
+# k8s version PINNED (not latest). With kops 1.36 installed, 1.30 is too old to
+# be reliably supported, so we pin to 1.33 — recent, stable, ~3 minors back.
+# VERIFY the exact patch your kops supports before first create:
+#   kops create cluster --help | grep -i kubernetes    # shows default
+#   (or check the kops release notes for its supported k8s range)
+# It's one line to change if kops rejects the patch.
+k8s_version: "1.33.13"
+kops_version: "1.36.2"   # informational; you installed this via brew
+
+cluster_name: "dev.retail.internal"
+
+# Terraform outputs are read at runtime from this file (produced by `make output`).
+tf_outputs_file: "/tmp/tf-dev-outputs.json"
+
+# kOps AMI. Leave EMPTY to let kops pick its channel-default (recommended — an
+# outdated hardcoded AMI is a common create failure). To pin later:  kops get assets
+node_image: ""
+
+# Sizing (dev = small + spot-heavy to save cost while keeping HA masters)
+master_instance_type: "t3.medium"
+node_instance_type: "t3.large"
+node_instance_type_alt: "t3a.large"
+nodes_ondemand_min: 1
+nodes_ondemand_max: 3
+nodes_spot_min: 2
+nodes_spot_max: 6
+
+# TLS: no public domain in this PoC -> self-signed CA issuer.
+# Flip to "acme" (and set a real public_zone_id in Terraform) for stage/prod.
+tls_mode: "selfsigned"            # selfsigned | acme
+ingress_cluster_issuer: "retail-ca-issuer"
+acme_email: "devops@example.com"
+acme_environment: "staging"       # only used when tls_mode=acme
+
+# CLI versions to install
+helm_version: "v3.14.4"
+argocd_cli_version: "v2.11.7"

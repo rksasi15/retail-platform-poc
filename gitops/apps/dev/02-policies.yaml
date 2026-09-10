@@ -1,0 +1,14 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies-dev
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "1" }   # after kyverno controller is up
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: dev
+  source: { repoURL: "https://github.com/CHANGE-ME/retail-platform-poc.git", targetRevision: main, path: gitops/policies }
+  destination: { server: https://kubernetes.default.svc, namespace: kyverno }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]
