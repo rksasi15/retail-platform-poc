@@ -16,8 +16,8 @@ ingress:
   clusterIssuer: retail-ca-issuer
   tls: true
 probes:
-  liveness:  { path: /actuator/health, port: 8080, initialDelaySeconds: 20, periodSeconds: 10 }
-  readiness: { path: /actuator/health, port: 8080, initialDelaySeconds: 10, periodSeconds: 10 }
+  liveness:  { path: /actuator/health/liveness, port: 8080, initialDelaySeconds: 45, periodSeconds: 10 }
+  readiness: { path: /actuator/health/readiness, port: 8080, initialDelaySeconds: 20, periodSeconds: 10 }
 resources:
   requests: { cpu: 100m, memory: 128Mi }
   limits:   { cpu: 500m, memory: 256Mi }
