@@ -8,6 +8,10 @@ spec:
   rules:
   - name: no-privileged
     match: { any: [{ resources: { kinds: [Pod] } }] }
+    exclude:
+      any:
+      - resources:
+          namespaces: [kube-system, kyverno, monitoring, cert-manager, external-secrets, ingress-nginx, argocd]
     validate:
       message: "Privileged containers are not allowed."
       pattern:

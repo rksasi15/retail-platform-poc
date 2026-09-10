@@ -8,6 +8,10 @@ spec:
   rules:
   - name: validate-resources
     match: { any: [{ resources: { kinds: [Pod] } }] }
+    exclude:
+      any:
+      - resources:
+          namespaces: [kube-system, kyverno, monitoring, cert-manager, external-secrets, ingress-nginx, argocd]
     validate:
       message: "CPU/memory requests and limits are required on every container."
       pattern:
@@ -15,4 +19,4 @@ spec:
           containers:
           - resources:
               requests: { memory: "?*", cpu: "?*" }
-              limits:   { memory: "?*", cpu: "?*" }
+              limits: { memory: "?*", cpu: "?*" }

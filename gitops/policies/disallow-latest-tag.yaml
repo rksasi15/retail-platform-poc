@@ -9,6 +9,10 @@ spec:
   rules:
   - name: require-image-tag
     match: { any: [{ resources: { kinds: [Pod] } }] }
+    exclude:
+      any:
+      - resources:
+          namespaces: [kube-system, kyverno, monitoring, cert-manager, external-secrets, ingress-nginx, argocd]
     validate:
       message: "Image tag ':latest' or missing tag is not allowed. Pin a tag or digest."
       pattern:
@@ -17,6 +21,10 @@ spec:
           - image: "!*:latest"
   - name: require-image-tag-present
     match: { any: [{ resources: { kinds: [Pod] } }] }
+    exclude:
+      any:
+      - resources:
+          namespaces: [kube-system, kyverno, monitoring, cert-manager, external-secrets, ingress-nginx, argocd]
     validate:
       message: "An explicit image tag/digest is required."
       pattern:
